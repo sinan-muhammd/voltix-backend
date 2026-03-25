@@ -10,7 +10,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174", "http://192.168.50.171:5173"],
+    origin: ["http://localhost:5173", "http://localhost:5174", "https://voltixev.vercel.app"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
