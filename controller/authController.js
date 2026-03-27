@@ -243,7 +243,7 @@ exports.forgotPassword = async (req, res) => {
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.resetPasswordExpire = Date.now() + 5 * 1000; // 5 seconds
 
     await user.save();
 
@@ -251,15 +251,15 @@ exports.forgotPassword = async (req, res) => {
 
     const html = `
       <h1>Password Reset Request</h1>
-      <p>Please click the link below to reset your password. This link is valid for 10 minutes.</p>
+      <p>Please click the link below to reset your password. This link is valid for 5 seconds.</p>
       <a href="${resetUrl}" clicktracking=off>${resetUrl}</a>
     `;
 
-    await sendEmail({
+    sendEmail({
       to: user.email,
       subject: "Password Reset - Voltix",
       html,
-    });
+    }).catch(err => console.error("Forgot Password Email Error in background:", err));
 
     res.json({
       message: "Password reset link sent to your email",

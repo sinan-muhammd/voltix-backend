@@ -66,15 +66,13 @@ exports.adminReplyToBooking = async (req, res) => {
                 <p>The administrator has replied to your booking request.</p>
                 <p><strong>Reply:</strong> <br/> ${reply}</p>
             `;
-            try {
-                await sendEmail({
-                    to: booking.user.email,
-                    subject: "Reply to your Test Drive Booking",
-                    html: message
-                });
-            } catch (emailError) {
-                console.error("Failed to send email to user:", emailError);
-            }
+            sendEmail({
+                to: booking.user.email,
+                subject: "Reply to your Test Drive Booking",
+                html: message
+            }).catch(emailError => {
+                console.error("Failed to send email to user in background:", emailError);
+            });
         }
 
         const fullyPopulatedBooking = await Booking.findById(updatedBooking._id)
