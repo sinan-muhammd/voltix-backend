@@ -231,39 +231,57 @@ exports.updateUserRole = async (req, res) => {
 
 
 
-// ─── FORGOT PASSWORD ─────────────────────────────────
+// ─── FORGOT PASSWORD ─────────────────────────────────────
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
 
-    if (!user) {
-      return res.status(404).json({ message: "User with this email does not exist" });
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
     }
 
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(404).json({ message: "No account found with this email address" });
+    }
+
+    // Generate a secure random token
     const resetToken = crypto.randomBytes(32).toString("hex");
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpire = Date.now() + 5 * 1000; // 5 seconds
+
+    // Store hashed token in DB for security
+    user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes
 
     await user.save();
 
+    // Send the raw (unhashed) token in the URL
     const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
 
     const html = `
-      <h1>Password Reset Request</h1>
-      <p>Please click the link below to reset your password. This link is valid for 5 seconds.</p>
-      <a href="${resetUrl}" clicktracking=off>${resetUrl}</a>
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f8fafc; border-radius: 12px;">
+        <h2 style="color: #0f172a;">Password Reset</h2>
+        <p style="color: #475569;">You requested to reset your password. Click the button below to proceed. This link will expire in <strong>15 minutes</strong>.</p>
+        <a href="${resetUrl}" style="display: inline-block; margin: 24px 0; padding: 14px 28px; background: #0f172a; color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: bold;">Reset My Password</a>
+        <p style="color: #94a3b8; font-size: 13px;">If you didn't request this, you can safely ignore this email.</p>
+      </div>
     `;
 
-    sendEmail({
-      to: user.email,
-      subject: "Password Reset - Voltix",
-      html,
-    }).catch(err => console.error("Forgot Password Email Error in background:", err));
-
-    res.json({
-      message: "Password reset link sent to your email",
-    });
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: "Password Reset - Voltix",
+        html,
+      });
+      res.json({ message: "Password reset link sent to your email" });
+    } catch (emailError) {
+      console.error("Forgot Password Email Error:", emailError);
+      // Clear the token if email failed so user can try again
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save();
+      res.status(500).json({ message: "Failed to send email. Please try again later." });
+    }
 
   } catch (error) {
     console.error("Forgot Password Error:", error);
@@ -275,30 +293,35 @@ exports.forgotPassword = async (req, res) => {
 
 
 
-// ─── RESET PASSWORD ──────────────────────────────────
+// ─── RESET PASSWORD ──────────────────────────────────────
 exports.resetPassword = async (req, res) => {
   try {
+    const { password } = req.body;
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    // Hash the incoming token to compare with stored hashed token
+    const hashedToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
+
     const user = await User.findOne({
-      resetPasswordToken: req.params.token,
+      resetPasswordToken: hashedToken,
       resetPasswordExpire: { $gt: Date.now() },
     });
 
     if (!user) {
-      return res.status(400).json({
-        message: "Token invalid or expired",
-      });
+      return res.status(400).json({ message: "Reset link is invalid or has expired. Please request a new one." });
     }
 
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(req.body.password, salt);
+    user.password = await bcrypt.hash(password, salt);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
 
     await user.save();
 
-    res.json({
-      message: "Password reset successful",
-    });
+    res.json({ message: "Password reset successful! You can now log in." });
 
   } catch (error) {
     console.error("Reset Password Error:", error);
